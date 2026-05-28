@@ -1,0 +1,32 @@
+# Antigravity CLI
+.antigravitycli/
+
+# macOS
+.DS_Store
+
+# Xcode
+#
+# build/
+# DerivedData/
+build/
+DerivedData/
+
+# AuthoringTemplate.plist and other UserSettings
+*.xcuserstate
+project.xcworkspace/xcuserdata/
+*.xcuserdatad/
+xcuserdata/
+
+# CocoaPods
+#
+# We recommend against committing the Pods directory or Podfile.lock.
+# Pods/
+# Podfile.lock
+
+# Carthage
+#
+# Carthage/Build
+
+# Accidental/temp files
+*.swp
+*~

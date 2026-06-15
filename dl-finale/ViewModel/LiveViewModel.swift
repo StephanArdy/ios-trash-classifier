@@ -39,25 +39,68 @@ class LiveViewModel {
 
     // MARK: - Private
 
-    private var vnRequest: VNCoreMLRequest?
+    private var mobileNetVisionModel: VNCoreMLModel?
+    private var resNetVisionModel: VNCoreMLModel?
     private var lastClassificationTime: Date = .distantPast
 
     // MARK: - Init
 
     init() {
-        setupVisionRequest()
+        setupVisionRequests()
     }
 
     // MARK: - Setup
 
-    private func setupVisionRequest() {
-        guard let coreMLModel = try? WasteClassifier(configuration: MLModelConfiguration()).model,
-              let vnModel = try? VNCoreMLModel(for: coreMLModel) else {
-            print("LiveViewModel: failed to build VNCoreMLModel from WasteClassifier")
-            return
+    private func setupVisionRequests() {
+        if let mobileNet = try? WasteMobileNet(configuration: MLModelConfiguration()).model {
+            self.mobileNetVisionModel = try? VNCoreMLModel(for: mobileNet)
+        } else {
+            print("LiveViewModel: failed to load WasteMobileNet model")
         }
+        
+        if let resNet = try? WasteResNet(configuration: MLModelConfiguration()).model {
+            self.resNetVisionModel = try? VNCoreMLModel(for: resNet)
+        } else {
+            print("LiveViewModel: failed to load WasteResNet model")
+        }
+    }
 
-        let request = VNCoreMLRequest(model: vnModel) { [weak self] request, error in
+    // MARK: - Lifecycle
+
+    /// Call from LiveView's `.onAppear`. Wires the frame hook and starts the session.
+    func startLive() {
+        cameraManager.onFrame = { [weak self] sampleBuffer in
+            self?.classifyFrame(sampleBuffer)
+        }
+        cameraManager.setupCamera()
+    }
+
+    /// Call from LiveView's `.onDisappear`. Stops the session and removes the frame hook.
+    func stopLive() {
+        cameraManager.onFrame = nil
+        cameraManager.stopCamera()
+        isScanning = false
+    }
+
+    // MARK: - Private Classification
+
+    /// Throttled classifier — skips frames that arrive before `classificationInterval` elapses.
+    /// Called on the camera background queue; all UI mutations dispatched to main.
+    private func classifyFrame(_ sampleBuffer: CMSampleBuffer) {
+        let now = Date()
+        guard now.timeIntervalSince(lastClassificationTime) >= classificationInterval else { return }
+
+        // Determine which Vision model to run based on current selection
+        let selectedModel = AppSettings.shared.selectedModel
+        let activeModel = (selectedModel == .mobileNet) ? mobileNetVisionModel : resNetVisionModel
+
+        guard let activeModel else { return }
+
+        lastClassificationTime = now
+
+        DispatchQueue.main.async { self.isScanning = true }
+
+        let request = VNCoreMLRequest(model: activeModel) { [weak self] request, error in
             guard let self else { return }
 
             if let error {
@@ -87,40 +130,8 @@ class LiveViewModel {
             }
         }
 
-        // CenterCrop matches how MobileNetV2 was trained
+        // CenterCrop matches how models were trained
         request.imageCropAndScaleOption = .centerCrop
-        self.vnRequest = request
-    }
-
-    // MARK: - Lifecycle
-
-    /// Call from LiveView's `.onAppear`. Wires the frame hook and starts the session.
-    func startLive() {
-        cameraManager.onFrame = { [weak self] sampleBuffer in
-            self?.classifyFrame(sampleBuffer)
-        }
-        cameraManager.setupCamera()
-    }
-
-    /// Call from LiveView's `.onDisappear`. Stops the session and removes the frame hook.
-    func stopLive() {
-        cameraManager.onFrame = nil
-        cameraManager.stopCamera()
-        isScanning = false
-    }
-
-    // MARK: - Private Classification
-
-    /// Throttled classifier — skips frames that arrive before `classificationInterval` elapses.
-    /// Called on the camera background queue; all UI mutations dispatched to main.
-    private func classifyFrame(_ sampleBuffer: CMSampleBuffer) {
-        let now = Date()
-        guard now.timeIntervalSince(lastClassificationTime) >= classificationInterval,
-              let request = vnRequest else { return }
-
-        lastClassificationTime = now
-
-        DispatchQueue.main.async { self.isScanning = true }
 
         let handler = VNImageRequestHandler(cmSampleBuffer: sampleBuffer, options: [:])
         do {

@@ -16,8 +16,12 @@ import PhotosUI
 struct HomeView: View {
 
     @State private var viewModel = HomeViewModel()
+    @State private var settings = AppSettings.shared
 
     var body: some View {
+        // Force SwiftUI to register HomeView as a dependency for selectedModel updates
+        let _ = settings.selectedModel
+        
         // @Bindable lets us derive Binding<T> from the @Observable PhotoLibraryManager.
         @Bindable var photoManager = viewModel.photoLibraryManager
 
@@ -68,6 +72,11 @@ struct HomeView: View {
         // Kick off image decoding whenever the library selection changes.
         .onChange(of: viewModel.photoLibraryManager.selectedItem) { _, _ in
             Task { await viewModel.loadPhotoLibraryImage() }
+        }
+        // Clear old result when model is switched
+        .onChange(of: settings.selectedModel) { oldVal, newVal in
+            print("HomeView: model switched from \(oldVal) to \(newVal)")
+            viewModel.clearResultOnly()
         }
     }
 

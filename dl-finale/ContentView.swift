@@ -17,6 +17,10 @@ struct ContentView: View {
             Tab("Live", systemImage: "camera.fill") {
                 LiveView()
             }
+            
+            Tab("Settings", systemImage: "gearshape.fill") {
+                SettingsView()
+            }
         }
     }
 }

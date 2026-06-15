@@ -49,6 +49,7 @@ struct ImagePreviewCard: View {
             .resizable()
             .scaledToFill()
             .frame(height: 290)
+            .clipped()
             .clipShape(RoundedRectangle(cornerRadius: 26))
             // Gradient overlay for depth
             .overlay(

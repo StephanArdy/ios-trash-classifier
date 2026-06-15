@@ -41,12 +41,16 @@ class HomeViewModel {
     /// Confidence score [0–1] for the top predicted class.
     var classificationConfidence: Double = 0.0
 
-    // MARK: - Private — ML Model
+    // MARK: - Private — ML Models
 
-    /// Loaded once at init; nil if the mlpackage is missing from the bundle.
-    private let classifier: WasteClassifier? = {
+    private let mobileNetClassifier: WasteMobileNet? = {
         let config = MLModelConfiguration()
-        return try? WasteClassifier(configuration: config)
+        return try? WasteMobileNet(configuration: config)
+    }()
+
+    private let resNetClassifier: WasteResNet? = {
+        let config = MLModelConfiguration()
+        return try? WasteResNet(configuration: config)
     }()
 
     // MARK: - Photo Library
@@ -73,7 +77,7 @@ class HomeViewModel {
 
     // MARK: - Classification
 
-    /// Runs WasteClassifier on the current `selectedImage` and updates
+    /// Runs the selected model on the current `selectedImage` and updates
     /// `classificationResult` + `classificationConfidence`.
     func classify() async {
         guard let image = selectedImage else { return }
@@ -83,18 +87,29 @@ class HomeViewModel {
             return
         }
 
-        guard let classifier else {
-            print("HomeViewModel: WasteClassifier model not available")
-            return
-        }
-
         await MainActor.run { isAnalyzing = true }
 
         do {
-            let output = try classifier.prediction(inputs: pixelBuffer)
+            let label: String
+            let confidence: Double
 
-            let label      = output.classLabel
-            let confidence = output.classLabel_probs[label] ?? 0.0
+            switch AppSettings.shared.selectedModel {
+            case .mobileNet:
+                guard let mobileNetClassifier else {
+                    throw NSError(domain: "HomeViewModel", code: 1, userInfo: [NSLocalizedDescriptionKey: "WasteMobileNet model not available"])
+                }
+                let output = try mobileNetClassifier.prediction(image: pixelBuffer)
+                label = output.classLabel
+                confidence = output.classLabel_probs[label] ?? 0.0
+                
+            case .resNet:
+                guard let resNetClassifier else {
+                    throw NSError(domain: "HomeViewModel", code: 2, userInfo: [NSLocalizedDescriptionKey: "WasteResNet model not available"])
+                }
+                let output = try resNetClassifier.prediction(image: pixelBuffer)
+                label = output.classLabel
+                confidence = output.classLabel_probs[label] ?? 0.0
+            }
 
             await MainActor.run {
                 isAnalyzing = false
@@ -108,6 +123,12 @@ class HomeViewModel {
     }
 
     // MARK: - Reset
+
+    /// Clears only the classification result and confidence.
+    func clearResultOnly() {
+        classificationResult = nil
+        classificationConfidence = 0.0
+    }
 
     /// Clears the selected image, result, and photo library selection.
     func clearImage() {
